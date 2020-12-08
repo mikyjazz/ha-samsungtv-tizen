@@ -978,7 +978,18 @@ class SamsungTVDevice(MediaPlayerEntity):
             _LOGGER.error("Unsupported source")
             return
         self._last_source_time = datetime.now()
-        self._source = source
+        if self._state == STATE_OFF:
+            #Try again after turning TV on if it is currently off
+            self.hass.async_add_job(self._execute_after_turn_on,"source",source)
+
+    async def _execute_after_turn_on(self, command, *arguments):
+        self.turn_on()
+        while self._state == STATE_OFF:
+            _LOGGER.debug("Checking if TV is on...")
+            await asyncio.sleep(5)
+        await asyncio.sleep(5)
+        if command == "source":
+            self.hass.async_add_job(self.async_select_source, arguments)
 
     @staticmethod
     def _levenshtein_ratio(s, t):
