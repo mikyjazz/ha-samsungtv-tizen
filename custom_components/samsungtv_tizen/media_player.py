@@ -993,10 +993,9 @@ class SamsungTVDevice(MediaPlayerEntity):
             await asyncio.sleep(5)
             _LOGGER.debug("Checking if TV is now on...")
             if self._state == STATE_ON:
-                break
-        await asyncio.sleep(5)
-        if command == "source":
-            self.hass.async_add_job(self.async_select_source, arguments[0])
+                await asyncio.sleep(5)
+                if command == "source":
+                    self.hass.async_add_job(self.async_select_source, arguments[0])
 
     @staticmethod
     def _levenshtein_ratio(s, t):
