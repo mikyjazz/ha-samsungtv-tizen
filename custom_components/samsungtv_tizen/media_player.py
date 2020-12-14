@@ -12,6 +12,7 @@ import websocket
 import requests
 import time
 import numpy as np
+import asyncio
 
 from .websockets import SamsungTVWS
 from . import exceptions
@@ -740,7 +741,7 @@ class SamsungTVDevice(MediaPlayerEntity):
         """Set the device class to TV."""
         return DEVICE_CLASS_TV
 
-    def turn_on(self):
+    def turn_on(self, optimistic=True):
         """Turn the media player on."""
         if self._power_off_in_progress():
             self._end_of_power_off = None 
@@ -763,8 +764,9 @@ class SamsungTVDevice(MediaPlayerEntity):
                 self.schedule_update_ha_state(True)
             else:
                 self.hass.async_add_job(self.send_command, "KEY_POWERON")
-        #Assume optomistic ON
-        self._state = STATE_ON
+        #Assume optimistic ON
+        if optimistic:
+            self._state = STATE_ON
 
     def turn_off(self):
         """Turn off media player."""
@@ -922,9 +924,9 @@ class SamsungTVDevice(MediaPlayerEntity):
                             last_was_delay = False
                             self.hass.async_add_job(self.send_command, this_key)
             elif source_key.startswith("ST_"):
-                self.hass.async_add_job(self._smartthings_keys, source_key)
+                await self.hass.async_add_job(self._smartthings_keys, source_key)
             else:
-                self.hass.async_add_job(self.send_command, source_key)
+                await self.hass.async_add_job(self.send_command, source_key)
         # Play media
         elif media_type == MEDIA_TYPE_URL:
             try:
@@ -959,37 +961,42 @@ class SamsungTVDevice(MediaPlayerEntity):
                         time.sleep(int(this_key)/1000)
                     else:
                         if this_key.startswith("ST_"):
-                            await self.hass.async_add_job(self._smartthings_keys, this_key)
+                            self.hass.async_add_job(self._smartthings_keys, this_key)
                         else:
-                            await self.hass.async_add_job(self.send_command, this_key)
+                            self.hass.async_add_job(self.send_command, this_key)
             elif source_key.startswith("ST_"):
-                await self.hass.async_add_job(self._smartthings_keys, source_key)
+                self.hass.async_add_job(self._smartthings_keys, source_key)
             else:
-                await self.hass.async_add_job(self.send_command, self._source_list[ source ])
+                self.hass.async_add_job(self.send_command, self._source_list[ source ])
         elif source in self._app_list:
             source_key = self._app_list[ source ]
-            await self.hass.async_add_job(self.send_command, source_key, "run_app")
+            self.hass.async_add_job(self.send_command, source_key, "run_app")
         elif source in self._channel_list:
             source_key = self._channel_list[ source ]
             ch_media_type = MEDIA_TYPE_CHANNEL
             if source_key.startswith("http"): ch_media_type = MEDIA_TYPE_URL
-            await self.hass.async_add_job(self.async_play_media,ch_media_type, source_key)
+            self.hass.async_add_job(self.async_play_media,ch_media_type, source_key)
         else:
             _LOGGER.error("Unsupported source")
             return
         self._last_source_time = datetime.now()
+        self._source = source
         if self._state == STATE_OFF:
             #Try again after turning TV on if it is currently off
             self.hass.async_add_job(self._execute_after_turn_on,"source",source)
 
     async def _execute_after_turn_on(self, command, *arguments):
-        self.turn_on()
-        while self._state == STATE_OFF:
-            _LOGGER.debug("Checking if TV is on...")
+        #Execute a function after turning on the TV first, right now only takes 'source' as command
+        _LOGGER.debug("Turning on TV first...")
+        self.turn_on(optimistic=False)
+        for _ in range(35):
             await asyncio.sleep(5)
+            _LOGGER.debug("Checking if TV is now on...")
+            if self._state == STATE_ON:
+                break
         await asyncio.sleep(5)
         if command == "source":
-            self.hass.async_add_job(self.async_select_source, arguments)
+            self.hass.async_add_job(self.async_select_source, arguments[0])
 
     @staticmethod
     def _levenshtein_ratio(s, t):
