@@ -10,7 +10,7 @@ import wakeonlan
 import websocket
 import requests
 import time
-import numpy as np
+# import numpy as np
 
 from .websockets import SamsungTVWS
 from . import exceptions
@@ -983,7 +983,8 @@ class SamsungTVDevice(MediaPlayerEntity):
     def _levenshtein_ratio(s, t):
             rows = len(s)+1
             cols = len(t)+1
-            distance = np.zeros((rows,cols),dtype = int)
+            # distance = np.zeros((rows,cols),dtype = int)
+            distance = [[0] * cols for i in range(rows)]
 
             for i in range(1, rows):
                 for k in range(1,cols):
